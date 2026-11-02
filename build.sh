@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 ./download-coppeliasim.sh
 
-echo "[..] 构建镜像（首次约 5–15 分钟）"
+echo "[..] 构建镜像"
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   docker compose build "$@"
 else
