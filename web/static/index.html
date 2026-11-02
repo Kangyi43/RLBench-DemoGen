@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RLBench DemoGen · 可视化数据生成工具</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='3' y='3' width='26' height='26' rx='7' fill='url(%23g)'/%3E%3Cpath d='M10 20l4-9 4 5 4-8' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+        <path d="M10 20l4-9 4 5 4-8" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="10" cy="20" r="2.2" fill="white"/>
+        <circle cx="22" cy="8" r="2.2" fill="white"/>
+      </svg>
+    </div>
+    <div>
+      <div class="brand-name">RLBench DemoGen</div>
+      <div class="brand-sub">可视化数据生成工具</div>
+    </div>
+  </div>
+  <nav class="tabs" id="mainTabs">
+    <button class="tab active" data-tab="generate">配置生成</button>
+    <button class="tab" data-tab="browse">数据浏览</button>
+  </nav>
+  <div class="topbar-actions">
+    <button class="btn ghost" id="btnExport">⬇ 导出 YAML</button>
+    <button class="btn ghost" id="btnVerify">✓ 数据校验</button>
+  </div>
+</header>
+
+<main>
+
+<section class="page active" id="page-generate">
+  <div class="gen-grid">
+
+    
+    <div class="col-left">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">任务选择</span>
+          <div class="row-actions">
+            <button class="mini-btn" id="btnAll">全选</button>
+            <button class="mini-btn" id="btnNone">清空</button>
+          </div>
+        </div>
+        <input class="input search" id="taskSearch" placeholder="搜索任务…">
+        <div class="task-grid" id="taskGrid"></div>
+        <div class="sel-info"><b id="selCount">0</b> 个任务已选 · 预计 <b id="selTotal">0</b> 集</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span class="card-title">生成参数</span></div>
+        <div class="field">
+          <label>每任务集数 <span class="val" id="epVal">25</span></label>
+          <input type="range" id="episodes" min="1" max="100" value="25">
+        </div>
+        <div class="field">
+          <label>并行 worker <span class="val" id="wkVal">2</span></label>
+          <input type="range" id="workers" min="1" max="8" value="2">
+          <div class="hint">每个 worker 独占一个仿真器实例，建议 ≤ CPU 核数一半</div>
+        </div>
+        <div class="field">
+          <label>图像分辨率</label>
+          <div class="seg" id="imgSize">
+            <button class="seg-btn active" data-v="128">128 × 128</button>
+            <button class="seg-btn" data-v="256">256 × 256</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>随机种子</label>
+          <div class="seed-row">
+            <input class="input" type="number" id="seed" value="42">
+            <button class="mini-btn" id="btnDice" title="随机种子">🎲</button>
+          </div>
+        </div>
+        <details class="adv">
+          <summary>高级选项</summary>
+          <div class="field">
+            <label>每集最大尝试次数</label>
+            <input class="input" type="number" id="attempts" value="10" min="1" max="50">
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" id="overwrite"> 覆盖已存在的 episode（默认断点续传）</label>
+          </div>
+        </details>
+        <button class="btn primary big" id="btnGenerate">▶ 开始生成</button>
+      </div>
+    </div>
+
+    
+    <div class="col-right">
+      <div class="card preview-card">
+        <div class="card-head">
+          <span class="card-title">实时预览 · 真渲染</span>
+          <div class="row-actions">
+            <button class="mini-btn" id="pvPrev">‹</button>
+            <span class="chip" id="pvVar">variation —</span>
+            <button class="mini-btn" id="pvNext">›</button>
+            <button class="mini-btn" id="pvNew">↻ 新随机</button>
+            <button class="btn ghost sm" id="btnPreview">渲染预览</button>
+          </div>
+        </div>
+        <div class="preview-meta" id="pvMeta">选择左侧任务后点击「渲染预览」，由 headless 仿真器真实渲染 5 个相机视角。</div>
+        <div class="preview-stage" id="pvStage">
+          <div class="preview-empty">
+            <div class="empty-glyph">◉</div>
+            <div>预览区为空 · 点击右上角「渲染预览」</div>
+            <div class="hint">首次渲染需启动仿真器，约 20–40 秒</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card console-card">
+        <div class="card-head">
+          <span class="card-title">生成任务</span>
+          <span class="badge" id="jobBadge">空闲</span>
+          <div class="row-actions">
+            <button class="mini-btn danger" id="btnStop" hidden>■ 中断</button>
+            <button class="mini-btn" id="btnClearLog">清除</button>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="progFill"></div></div>
+          <div class="progress-text" id="progText">0 / 0</div>
+        </div>
+        <div class="terminal" id="term"><div class="term-line dim">— 等待任务 —</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="page" id="page-browse">
+  <div class="browse-grid">
+    <div class="col-left">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">数据集</span>
+          <button class="mini-btn" id="btnRefreshDs">↻ 刷新</button>
+        </div>
+        <div class="ds-list" id="dsList">
+          <div class="empty-glyph sm">◌</div>
+          <div class="hint">加载中…</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card" id="viewerCard">
+        <div class="card-head">
+          <span class="card-title" id="viewerTitle">Episode 查看器</span>
+          <div class="row-actions">
+            <div class="seg sm" id="streamSeg">
+              <button class="seg-btn active" data-v="rgb">RGB</button>
+              <button class="seg-btn" data-v="depth">深度</button>
+              <button class="seg-btn" data-v="mask">掩码</button>
+            </div>
+            <select class="input select" id="camSel">
+              <option value="front">front</option>
+              <option value="left_shoulder">left_shoulder</option>
+              <option value="right_shoulder">right_shoulder</option>
+              <option value="overhead">overhead</option>
+              <option value="wrist">wrist</option>
+            </select>
+            <button class="mini-btn" id="btnPlay">▶</button>
+          </div>
+        </div>
+        <div class="viewer-stage" id="viewerStage">
+          <div class="preview-empty">
+            <div class="empty-glyph">▤</div>
+            <div>从左侧选择一个 episode</div>
+          </div>
+        </div>
+        <div class="scrubber" id="scrubber" hidden>
+          <input type="range" id="stepRange" min="0" max="0" value="0">
+          <div class="scrub-info"><span id="stepLabel">step 0 / 0</span><span id="epMeta"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<div class="toasts" id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>

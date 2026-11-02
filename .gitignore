@@ -1,0 +1,16 @@
+# CoppeliaSim binary — proprietary freeware, must NEVER be committed
+# (no redistribution allowed). See THIRD_PARTY_NOTICES.md.
+docker/coppeliasim.tar.xz
+docker/*.tar.xz
+
+# User-supplied benchmark task variants (from SAM2Act/PerAct install) —
+# academic use only, must never be committed.
+tasks_extra/tasks/*.py
+tasks_extra/task_ttms/*.ttm
+
+# generated data / configs
+output/
+configs/
+
+__pycache__/
+*.pyc
