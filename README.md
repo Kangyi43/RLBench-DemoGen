@@ -1,6 +1,6 @@
 # RLBench-DemoGen - 可视化机械臂数据生成工具
 在浏览器里选任务、预览真渲染效果、一键生成RLBench操作演示数据集，也可纯命令行运行。Docker命令部署环境。
-
+![Image text](https://github.com/Kangyi43/RLBench-DemoGen/blob/main/scripts/fig1.png)
 ## 特点
 - **可视化操作**：任务点选/参数滑杆/仿真器真渲染预览/进度与日志实时展示/任务中断
 - **安装快捷**：`./build.sh` 命令安装
