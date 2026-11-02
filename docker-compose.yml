@@ -1,0 +1,15 @@
+services:
+  demogen:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: rlbench-demogen:latest
+    ports:
+      - "8000:8000"
+    shm_size: "4gb"
+    volumes:
+      - ./output:/data
+      - ./configs:/configs
+    environment:
+      - LIBGL_ALWAYS_SOFTWARE=1
+    command: ["serve"]

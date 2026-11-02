@@ -1,0 +1,6 @@
+services:
+  demogen:
+    gpus: all
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - LIBGL_ALWAYS_SOFTWARE=0
