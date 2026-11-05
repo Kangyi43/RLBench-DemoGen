@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import importlib
 import json
 import multiprocessing as mp
@@ -12,7 +13,7 @@ import traceback
 import numpy as np
 from PIL import Image
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 CAMERAS = ("front", "left_shoulder", "right_shoulder", "overhead", "wrist")
 
 TASKS_18 = [
@@ -135,7 +136,7 @@ def save_episode(demo, ep_dir, task_name, episode_idx, variation,
         pickle.dump(low_dim_steps, f)
 
     def _arr(x):
-        return np.asarray(x).tolist()
+        return None if x is None else np.asarray(x).tolist()
 
     meta = {
         "schema_version": SCHEMA_VERSION,
@@ -151,11 +152,16 @@ def save_episode(demo, ep_dir, task_name, episode_idx, variation,
         "mask_encoding": "uint16_png_instance_labels",
         "expert_success": True,
         "camera_intrinsics": {
-            cam: _arr(getattr(first, "camera_intrinsics", {}).get(cam))
+            cam: _arr((first.misc or {}).get(f"{cam}_camera_intrinsics"))
             for cam in CAMERAS
         },
         "camera_extrinsics": {
-            cam: _arr(getattr(first, "camera_extrinsics", {}).get(cam))
+            cam: _arr((first.misc or {}).get(f"{cam}_camera_extrinsics"))
+            for cam in CAMERAS
+        },
+        "camera_clipping": {
+            cam: {"near": (first.misc or {}).get(f"{cam}_camera_near"),
+                  "far": (first.misc or {}).get(f"{cam}_camera_far")}
             for cam in CAMERAS
         },
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -190,8 +196,9 @@ def process_task(task_name, args):
                 log(f"{task_name} episode{ep_idx}: complete, skipped (resume)")
                 continue
 
-            seed = (args.seed * 1000003 + hash((task_name, ep_idx)) % (2 ** 31))
-            seed = int(seed % (2 ** 31))
+            digest = hashlib.sha256(
+                f"{args.seed}:{task_name}:{ep_idx}".encode()).hexdigest()
+            seed = int(args.seed * 1000003 + int(digest[:8], 16)) % (2 ** 31)
             random.seed(seed)
             np.random.seed(seed % (2 ** 32))
 

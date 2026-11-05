@@ -65,6 +65,22 @@ docker compose run --rm demogen generate --help            # 全部参数
 
 数据格式与动作推导（供训练用）：[docs/data-format.md](docs/data-format.md)。
 
+## 导出为 LeRobot 格式
+
+```bash
+docker compose run --rm demogen convert --src /data --out /data/lerobot --name my_dataset
+```
+
+一步产出 HuggingFace LeRobot v2.1 标准数据集（parquet + h264 视频 + 统计），
+可直接喂 ACT / Diffusion Policy 训练。动作空间预设
+（`eef-pose` / `eef-delta` / `joint`）、相机与分辨率可选，详见
+[docs/lerobot-export.md](docs/lerobot-export.md)。
+
+## 发展路线
+
+数据工厂增长计划（格式出口 → 训练闭环 → 可视化合成 → 声量）：
+[docs/plan-growth.md](docs/plan-growth.md)。
+
 ## 基准任务补全（18 任务基准集需要）
 
 官方 RLBench 没有 3 个 PerAct/SAM2Act 基准任务变体
@@ -95,9 +111,13 @@ docker compose run --rm demogen generate --help            # 全部参数
 
 ```bash
 ./download-coppeliasim.sh            # 反复重跑续传；更慢时浏览器/迅雷下载后放 docker/coppeliasim.tar.xz
-docker compose build --build-arg RLBENCH_REPO=<镜像地址> --build-arg PYREP_REPO=<镜像地址>
+DEMOGEN_GH_MIRROR=https://ghfast.top/ ./build.sh    # GitHub 镜像加速（build.sh 会自动探测并切换）
+docker compose build --build-arg GITHUB_MIRROR=https://ghfast.top/   # 等价手动形式
 docker compose build --build-arg HTTPS_PROXY=http://127.0.0.1:7890 --build-arg HTTP_PROXY=http://127.0.0.1:7890
 ```
+
+GitHub 直连/SSH 慢时（常见），用 `GITHUB_MIRROR` 走代理镜像（实测 `ghfast.top`
+45 秒可克隆 93MB，直连同期停滞）；`GIT_DEPTH=0` 可恢复全量克隆（默认浅克隆）。
 
 ## 故障排查
 

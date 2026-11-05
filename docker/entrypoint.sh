@@ -15,6 +15,7 @@ ensure_display() {
 case "${1:-serve}" in
   serve)   shift; ensure_display; exec python3 -m uvicorn web.main:app --host 0.0.0.0 --port 8000 "$@" ;;
   generate) shift; ensure_display; exec python3 /app/scripts/generate.py "$@" ;;
+  convert) shift; exec python3 /app/scripts/convert_lerobot.py "$@" ;;
   verify)  shift; exec python3 /app/scripts/verify.py "$@" ;;
   bash|sh) shift; exec /bin/bash "$@" ;;
   *)       exec "$@" ;;

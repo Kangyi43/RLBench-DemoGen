@@ -31,12 +31,16 @@ ENV COPPELIASIM_ROOT=/opt/coppeliasim \
 ARG PIP_INDEX_URL=
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel \
     && pip3 install --no-cache-dir "numpy<2" Pillow cffi pyquaternion scipy natsort gymnasium \
-       fastapi "uvicorn[standard]" pyyaml
+       fastapi "uvicorn[standard]" pyyaml pandas "pyarrow>=14" av
 
 ARG PYREP_REPO=https://github.com/stepjam/PyRep
 ARG PYREP_REF=master
-RUN for i in 1 2 3 4 5; do \
-        git clone "${PYREP_REPO}" /opt/PyRep && break; \
+ARG GIT_DEPTH=1
+ARG GITHUB_MIRROR=
+RUN export GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIMEOUT=30; \
+    depth="--depth ${GIT_DEPTH}"; [ "${GIT_DEPTH}" = "0" ] && depth=""; \
+    for i in 1 2 3 4 5; do \
+        git clone ${depth} "${GITHUB_MIRROR}${PYREP_REPO}" /opt/PyRep && break; \
         echo "clone attempt $i failed, retrying..."; rm -rf /opt/PyRep; sleep $((i * 3)); \
     done \
     && cd /opt/PyRep && git checkout "${PYREP_REF}" \
@@ -44,8 +48,10 @@ RUN for i in 1 2 3 4 5; do \
 
 ARG RLBENCH_REPO=https://github.com/stepjam/RLBench
 ARG RLBENCH_REF=master
-RUN for i in 1 2 3 4 5; do \
-        git clone "${RLBENCH_REPO}" /opt/RLBench && break; \
+RUN export GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIMEOUT=30; \
+    depth="--depth ${GIT_DEPTH}"; [ "${GIT_DEPTH}" = "0" ] && depth=""; \
+    for i in 1 2 3 4 5; do \
+        git clone ${depth} "${GITHUB_MIRROR}${RLBENCH_REPO}" /opt/RLBench && break; \
         echo "clone attempt $i failed, retrying..."; rm -rf /opt/RLBench; sleep $((i * 3)); \
     done \
     && cd /opt/RLBench && git checkout "${RLBENCH_REF}"

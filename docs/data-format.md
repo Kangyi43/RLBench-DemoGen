@@ -54,13 +54,14 @@
 
 | 字段 | 含义 |
 |---|---|
-| `schema_version` | 格式版本（当前 "1.0"） |
+| `schema_version` | 格式版本（当前 "1.1"；1.1 起相机内外参为真实值并新增 `camera_clipping`） |
 | `task` / `episode_index` / `variation_number` | 标识与任务变体编号 |
 | `language_instructions` | 语言指令列表（同一任务不同表述） |
 | `seed` | 该集生成用的随机种子（**best-effort 可复现**：物理引擎可能引入非确定性） |
 | `num_steps` / `image_size` / `cameras` | 规模信息 |
 | `depth_encoding` / `mask_encoding` | 编码说明（自描述，工具链应以此为准） |
-| `camera_intrinsics` / `camera_extrinsics` | 每相机 3×3 内参 / 4×4 外参（可把像素反投影回 3D） |
+| `camera_intrinsics` / `camera_extrinsics` | 每相机 3×3 内参 / 4×4 外参（`<cam>_camera_*` 源自 `obs.misc`，可把像素反投影回 3D） |
+| `camera_clipping` | 每相机 `near`/`far` 裁剪面（配合深度做度量重建） |
 | `expert_success` | 脚本专家校验通过（RLBench demo 必为成功轨迹） |
 | `provenance` | 生成时 RLBench / PyRep 的 ref（溯源） |
 
