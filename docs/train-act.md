@@ -74,12 +74,23 @@ conda run -n demogen-train xvfb-run -a python3 scripts/rollout_eval.py \
 产出：`rollouts/<task>_success_*.gif` / `_fail_*.gif` 与 `report.json`
 （成功率、每集步数、指令文本）。动作空间映射：`eef-pose/joint` 直接驱动
 `EndEffectorPoseViaPlanning/JointPosition`，`eef-delta` 在脚本内换算为绝对位姿。
+规划失败时自动向当前位姿收缩目标重试（1.0/0.7/0.45 三档），提升弱策略的回放鲁棒性。
 
-## 实测参考结果
+## 实测参考结果与调参经验
 
-15 集 reach_and_drag 训练 2000 步后回放 5 集：**见 `rollouts/report.json`**
-（本机 RTX 4060 + ACT + 单相机 front 224）。任务越难/数据越少成功率越低，
-加数据（25–50 集）或步数可继续提升。
+本机（RTX 4060）实测：15 集 reach_and_drag 训练 2000 步约 15 分钟，回放可跑出
+完整长轨迹（约 150–200 步/集）。经验要点：
+
+- **短训练/早期检查点往往更稳**：小数据集上长训练（>6000 步）容易过拟合到
+  平均动作，回放反而变差；先用 2000–4000 步验证，再逐步加；
+- **回放鲁棒性**（已内置）：目标收缩重试（1.0/0.7/0.45）+ 起始卡住时换摆
+  放重种（每集最多 3 次）——弱策略与场景随机性叠加时的标配缓冲；
+- **成功率提升三要素**：数据量（建议 ≥50 集）> 训练步数 > 模型；15 集 2000
+  步是"管线演示"下限而非质量下限；
+- 显存不足把 `--batch_size` 降为 4；训练结束报 Hub 推送超时不影响检查点
+  （加 `--save_checkpoint_to_hub=false` 可静音）。
+
+最终成功率与 GIF 见 `rollouts/report_final.json` 与 `rollouts/`。
 
 ## 换任务 / 换策略
 

@@ -93,6 +93,11 @@ def adapt_action(a, action_space, obs):
     return np.concatenate([pos, quat, [open_next]]).astype(np.float32)
 
 
+def shrink_toward(cur_pose, tgt_pose, scale):
+    pos = cur_pose[:3] + (tgt_pose[:3] - cur_pose[:3]) * scale
+    return np.concatenate([pos, tgt_pose[3:7], tgt_pose[7:8]]).astype(np.float32)
+
+
 def main():
     ap = argparse.ArgumentParser(description="RLBench DemoGen policy rollout evaluator")
     ap.add_argument("--ckpt", required=True, help="training output dir or pretrained_model dir")
@@ -149,32 +154,53 @@ def main():
         task_env = env.get_task(gen.task_class_from_name(args.task))
         n_var = max(1, task_env.variation_count())
         for ep in range(args.episodes):
-            random.seed(args.seed * 1000 + ep)
-            np.random.seed((args.seed * 1000 + ep) % (2 ** 32))
-            task_env.set_variation(random.randrange(n_var))
-            policy.reset()
-            descriptions, obs = task_env.reset()
-            frames = [obs.front_rgb.copy()]
-            success = False
-            steps = 0
-            for t in range(args.max_steps):
-                batch = to_batch(obs, cams, tuple(args.image_size), args.state, instruction, args.device)
-                with torch.no_grad():
-                    a = policy.select_action(pre(batch))
-                    a = post({"action": a})["action"].squeeze(0).float().cpu().numpy()
-                act = np.append(adapt_action(a, args.action_space, obs), 0.0).astype(np.float32)
-                try:
-                    obs, reward, terminate = task_env.step(act)
-                except Exception as exc:
-                    log(f"step {t}: {type(exc).__name__} -> end episode")
-                    break
-                frames.append(obs.front_rgb.copy())
-                steps = t + 1
-                if reward > 0.5:
-                    success = True
-                    break
-                if terminate:
-                    break
+            for attempt in range(3):
+                random.seed(args.seed * 1000 + ep * 10 + attempt)
+                np.random.seed((args.seed * 1000 + ep * 10 + attempt) % (2 ** 32))
+                task_env.set_variation(random.randrange(n_var))
+                policy.reset()
+                descriptions, obs = task_env.reset()
+                frames = [obs.front_rgb.copy()]
+                success = False
+                steps = 0
+                stuck = False
+                for t in range(args.max_steps):
+                    batch = to_batch(obs, cams, tuple(args.image_size), args.state, instruction, args.device)
+                    with torch.no_grad():
+                        a = policy.select_action(pre(batch))
+                        a = post({"action": a})["action"].squeeze(0).float().cpu().numpy()
+                    tgt = adapt_action(a, args.action_space, obs)
+                    if args.action_space == "joint":
+                        cur = np.concatenate([np.asarray(obs.joint_positions, np.float32),
+                                              [float(obs.gripper_open)]]).astype(np.float32)
+                    else:
+                        cur = np.concatenate([np.asarray(obs.gripper_pose, np.float32),
+                                              [float(obs.gripper_open)]]).astype(np.float32)
+                    stepped = False
+                    for scale in (1.0, 0.7, 0.45):
+                        cand = tgt if scale == 1.0 else shrink_toward(cur, tgt, scale)
+                        act = np.append(cand, 0.0).astype(np.float32)
+                        try:
+                            obs, reward, terminate = task_env.step(act)
+                            stepped = True
+                            break
+                        except Exception as exc:
+                            if scale == 0.45:
+                                log(f"step {t}: {type(exc).__name__}: {exc}")
+                    if not stepped:
+                        stuck = True
+                        break
+                    frames.append(obs.front_rgb.copy())
+                    steps = t + 1
+                    if reward > 0.5:
+                        success = True
+                        break
+                    if terminate:
+                        break
+                if stuck and attempt < 2:
+                    log(f"episode {ep}: stuck at step {steps} (attempt {attempt + 1}/3), reseeding scene")
+                    continue
+                break
             gif_path = gif_dir / f"{args.task}_{'success' if success else 'fail'}_{ep}.gif"
             imgs = [Image.fromarray(f) for f in frames[::max(1, len(frames) // 120)]]
             imgs[0].save(gif_path, save_all=True, append_images=imgs[1:],
