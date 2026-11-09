@@ -26,6 +26,7 @@
   <nav class="tabs" id="mainTabs">
     <button class="tab active" data-tab="generate">配置生成</button>
     <button class="tab" data-tab="browse">数据浏览</button>
+    <button class="tab" data-tab="export">数据导出</button>
   </nav>
   <div class="topbar-actions">
     <button class="btn ghost" id="btnExport">⬇ 导出 YAML</button>
@@ -178,6 +179,80 @@
           <input type="range" id="stepRange" min="0" max="0" value="0">
           <div class="scrub-info"><span id="stepLabel">step 0 / 0</span><span id="epMeta"></span></div>
         </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ 数据导出 ══════════════════ -->
+<section class="page" id="page-export">
+  <div class="gen-grid">
+    <div class="col-left">
+      <div class="card">
+        <div class="card-head"><span class="card-title">导出配置 · LeRobot v2.1</span></div>
+        <div class="field">
+          <label>任务范围</label>
+          <div class="seg" id="exTaskMode">
+            <button class="seg-btn active" data-v="all">全部任务</button>
+            <button class="seg-btn" data-v="pick">指定任务</button>
+          </div>
+          <div class="ds-eps" id="exTaskChips" hidden></div>
+        </div>
+        <div class="field">
+          <label>导出相机（视频流）</label>
+          <div class="ds-eps" id="exCams"></div>
+        </div>
+        <div class="field">
+          <label>图像尺寸</label>
+          <div class="seg" id="exSize">
+            <button class="seg-btn active" data-v="keep">保持原尺寸</button>
+            <button class="seg-btn" data-v="224">224 × 224</button>
+            <button class="seg-btn" data-v="128">128 × 128</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>动作空间</label>
+          <div class="seg" id="exAction">
+            <button class="seg-btn active" data-v="eef-pose">eef-pose</button>
+            <button class="seg-btn" data-v="eef-delta">eef-delta</button>
+            <button class="seg-btn" data-v="joint">joint</button>
+          </div>
+          <div class="hint">eef-pose：下一步绝对位姿+开合 · eef-delta：位姿增量 · joint：下一步关节角</div>
+        </div>
+        <div class="field">
+          <label>状态预设</label>
+          <div class="seg" id="exState">
+            <button class="seg-btn active" data-v="pose">pose（8 维）</button>
+            <button class="seg-btn" data-v="full">full（17 维）</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>数据集名称</label>
+          <input class="input" id="exName" value="rlbench_demogen">
+        </div>
+        <div class="field">
+          <label>标称帧率 fps <span class="val" id="exFpsVal">30</span></label>
+          <input type="range" id="exFps" min="5" max="60" value="30">
+        </div>
+        <button class="btn primary big" id="btnExportStart">▶ 开始导出</button>
+      </div>
+    </div>
+    <div class="col-right">
+      <div class="card console-card">
+        <div class="card-head">
+          <span class="card-title">导出任务</span>
+          <span class="badge" id="exBadge">空闲</span>
+          <div class="row-actions">
+            <button class="mini-btn danger" id="btnExStop" hidden>■ 中断</button>
+            <button class="mini-btn" id="btnExClear">清除</button>
+          </div>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="exProgFill"></div></div>
+          <div class="progress-text" id="exProgText">0 / 0</div>
+        </div>
+        <div class="terminal" id="exTerm"><div class="term-line dim">— 等待导出任务 —</div></div>
+        <div class="hint" style="margin-top:10px">输出目录：<b>output/lerobot/</b>（标准 LeRobot v2.1，可直接用于 ACT / Diffusion Policy 训练）</div>
       </div>
     </div>
   </div>

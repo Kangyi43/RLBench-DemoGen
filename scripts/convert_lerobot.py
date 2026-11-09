@@ -204,6 +204,9 @@ def main():
     log(f"found {len(episodes)} episodes")
 
     out = Path(args.out)
+    import shutil
+    for sub in ("meta", "data", "videos"):
+        shutil.rmtree(out / sub, ignore_errors=True)
     (out / "meta").mkdir(parents=True, exist_ok=True)
 
     task_strings = []

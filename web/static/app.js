@@ -9,9 +9,8 @@ const state = {
   selected: new Set(),
   imgSize: 128,
   preview: { task: null, variation: -1, variationCount: 0, data: null },
-  jobTimer: null,
-  currentJobId: null,
-  logOffset: 0,
+  jobIds: { gen: null, exp: null },
+  jobTimers: { gen: null, exp: null },
   viewer: { task: null, episode: null, steps: 0, step: 0, cam: "front", stream: "rgb", playTimer: null },
 };
 
@@ -203,58 +202,70 @@ $("#pvNext").addEventListener("click", () => {
   doPreview(v);
 });
 
-function renderJob(job) {
-  const badge = $("#jobBadge");
+const JOBC = {
+  gen: { badge: "#jobBadge", fill: "#progFill", text: "#progText", term: "#term", stop: "#btnStop", start: "#btnGenerate", verb: "生成" },
+  exp: { badge: "#exBadge", fill: "#exProgFill", text: "#exProgText", term: "#exTerm", stop: "#btnExStop", start: "#btnExportStart", verb: "导出" },
+};
+
+function renderJob(job, k) {
+  const c = JOBC[k];
+  const badge = $(c.badge);
   badge.className = `badge ${job.status}`;
   badge.textContent = { running: "运行中", done: "已完成", failed: "失败", stopping: "中断中", stopped: "已中断" }[job.status] || job.status;
-  $("#btnStop").hidden = !(job.status === "running" || job.status === "stopping");
+  $(c.stop).hidden = !(job.status === "running" || job.status === "stopping");
+  $(c.stop).disabled = false;
   const pct = job.total ? Math.round((job.progress / job.total) * 100) : 0;
-  $("#progFill").style.width = `${pct}%`;
-  $("#progText").textContent = `${job.progress} / ${job.total} 集 · ${pct}%`;
-
-  const term = $("#term");
+  $(c.fill).style.width = `${pct}%`;
+  $(c.text).textContent = `${job.progress} / ${job.total} 集 · ${pct}%`;
+  const term = $(c.term);
   term.innerHTML = "";
   for (const line of job.logs) {
     const div = document.createElement("div");
-    div.className = "term-line" + (line.includes("saved") ? " ok" : line.includes("GIVING UP") || line.includes("FAILED") ? " err" : "");
+    div.className = "term-line" + (line.includes("saved") || line.includes("exported") ? " ok" : line.includes("GIVING UP") || line.includes("FAILED") ? " err" : "");
     div.textContent = line;
     term.appendChild(div);
   }
   term.scrollTop = term.scrollHeight;
 }
 
-async function pollJob(id) {
+async function pollJob(id, k) {
+  const c = JOBC[k];
   try {
     const job = await api(`/api/jobs/${id}`);
-    renderJob(job);
+    renderJob(job, k);
     if (job.status === "running" || job.status === "stopping") {
-      state.jobTimer = setTimeout(() => pollJob(id), 1500);
+      state.jobTimers[k] = setTimeout(() => pollJob(id, k), 1500);
     } else {
-      state.jobTimer = null;
-      $("#btnGenerate").disabled = false;
-      const msg = { done: `生成完成：${job.progress} 集`, stopped: "生成任务已中断", failed: `生成失败：${job.error || "见日志"}` }[job.status] || job.status;
+      state.jobTimers[k] = null;
+      $(c.start).disabled = false;
+      const msg = { done: `${c.verb}完成：${job.progress} 集`, stopped: `${c.verb}任务已中断`, failed: `${c.verb}失败：${job.error || "见日志"}` }[job.status] || job.status;
       toast(msg, job.status === "failed" ? "err" : "ok");
     }
   } catch (e) {
-    state.jobTimer = null;
-    $("#btnGenerate").disabled = false;
+    state.jobTimers[k] = null;
+    $(c.start).disabled = false;
     toast(`任务状态获取失败：${e.message}`, "err");
   }
 }
 
-$("#btnStop").addEventListener("click", async () => {
-  const running = state.currentJobId;
-  if (!running) return;
-  $("#btnStop").disabled = true;
-  try {
-    await api(`/api/jobs/${running}/stop`, { method: "POST" });
-    toast("中断指令已发送", "ok");
-    pollJob(running);
-  } catch (e) {
-    toast(`中断失败：${e.message}`, "err");
-    $("#btnStop").disabled = false;
-  }
-});
+function bindJobControls(k) {
+  const c = JOBC[k];
+  $(c.stop).addEventListener("click", async () => {
+    const running = state.jobIds[k];
+    if (!running) return;
+    $(c.stop).disabled = true;
+    try {
+      await api(`/api/jobs/${running}/stop`, { method: "POST" });
+      toast("中断指令已发送", "ok");
+      pollJob(running, k);
+    } catch (e) {
+      toast(`中断失败：${e.message}`, "err");
+      $(c.stop).disabled = false;
+    }
+  });
+}
+bindJobControls("gen");
+bindJobControls("exp");
 
 $("#btnGenerate").addEventListener("click", async () => {
   const cfg = collectConfig();
@@ -264,19 +275,93 @@ $("#btnGenerate").addEventListener("click", async () => {
   try {
     const r = await api("/api/generate", { method: "POST", body: JSON.stringify(cfg) });
     toast(`任务已启动（${r.job_id}）`, "ok");
-    state.currentJobId = r.job_id;
-    state.logOffset = 0;
-    pollJob(r.job_id);
+    state.jobIds.gen = r.job_id;
+    pollJob(r.job_id, "gen");
   } catch (e) {
     $("#btnGenerate").disabled = false;
     toast(`启动失败：${e.message}`, "err");
   }
 });
 
-$("#btnClearLog").addEventListener("click", () => {
-  $("#term").innerHTML = `<div class="term-line dim">— 等待任务 —</div>`;
-  $("#progFill").style.width = "0%";
-  $("#progText").textContent = "0 / 0";
+function resetConsole(k) {
+  const c = JOBC[k];
+  $(c.term).innerHTML = `<div class="term-line dim">— 等待任务 —</div>`;
+  $(c.fill).style.width = "0%";
+  $(c.text).textContent = "0 / 0";
+}
+$("#btnClearLog").addEventListener("click", () => resetConsole("gen"));
+$("#btnExClear").addEventListener("click", () => resetConsole("exp"));
+
+function segBind(id, cb) {
+  $$(id + " .seg-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      $$(id + " .seg-btn").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      cb(b.dataset.v);
+    })
+  );
+}
+
+const EX_CAMS = ["front", "left_shoulder", "right_shoulder", "overhead", "wrist"];
+const exSel = { taskMode: "all", tasks: new Set(), cams: new Set(EX_CAMS), size: "keep", action: "eef-pose", state: "pose" };
+
+function renderExChips() {
+  const box = $("#exTaskChips");
+  box.innerHTML = "";
+  state.tasks.forEach((t) => {
+    const chip = document.createElement("span");
+    chip.className = "ep-chip" + (exSel.tasks.has(t) ? " active" : "");
+    chip.textContent = t;
+    chip.addEventListener("click", () => {
+      exSel.tasks.has(t) ? exSel.tasks.delete(t) : exSel.tasks.add(t);
+      chip.classList.toggle("active");
+    });
+    box.appendChild(chip);
+  });
+  const cams = $("#exCams");
+  cams.innerHTML = "";
+  EX_CAMS.forEach((c) => {
+    const chip = document.createElement("span");
+    chip.className = "ep-chip active";
+    chip.textContent = c;
+    chip.addEventListener("click", () => {
+      if (exSel.cams.has(c) && exSel.cams.size > 1) exSel.cams.delete(c);
+      else exSel.cams.add(c);
+      chip.classList.toggle("active", exSel.cams.has(c));
+    });
+    cams.appendChild(chip);
+  });
+}
+
+segBind("#exTaskMode", (v) => { exSel.taskMode = v; $("#exTaskChips").hidden = v !== "pick"; });
+segBind("#exSize", (v) => (exSel.size = v));
+segBind("#exAction", (v) => (exSel.action = v));
+segBind("#exState", (v) => (exSel.state = v));
+$("#exFps").addEventListener("input", (e) => ($("#exFpsVal").textContent = e.target.value));
+
+$("#btnExportStart").addEventListener("click", async () => {
+  const cfg = {
+    tasks: exSel.taskMode === "pick" ? [...exSel.tasks] : [],
+    cameras: [...exSel.cams],
+    image_size: exSel.size === "keep" ? [] : [+exSel.size, +exSel.size],
+    state: exSel.state,
+    action_space: exSel.action,
+    fps: +$("#exFps").value,
+    val_ratio: 0,
+    name: $("#exName").value.trim() || "rlbench_demogen",
+  };
+  if (exSel.taskMode === "pick" && !cfg.tasks.length) { toast("请勾选至少一个任务", "err"); return; }
+  $("#btnExportStart").disabled = true;
+  $("#exTerm").innerHTML = `<div class="term-line dim">— 启动导出：${cfg.tasks.length || "全部"} 任务 · ${cfg.action_space} · ${cfg.cameras.length} 相机 —</div>`;
+  try {
+    const r = await api("/api/export", { method: "POST", body: JSON.stringify(cfg) });
+    toast(`导出任务已启动（${r.job_id}）`, "ok");
+    state.jobIds.exp = r.job_id;
+    pollJob(r.job_id, "exp");
+  } catch (e) {
+    $("#btnExportStart").disabled = false;
+    toast(`启动失败：${e.message}`, "err");
+  }
 });
 
 async function loadDatasets() {
@@ -379,6 +464,7 @@ $("#btnRefreshDs").addEventListener("click", loadDatasets);
     state.tasks = r.tasks;
     renderTasks();
     updateSelInfo();
+    renderExChips();
   } catch (e) {
     toast(`后端连接失败：${e.message}`, "err");
   }

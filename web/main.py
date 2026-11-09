@@ -55,6 +55,16 @@ class GenerateConfig(BaseModel):
     layout: str = "all_variations"
     overwrite: bool = False
 
+class ExportConfig(BaseModel):
+    tasks: list[str] = []
+    cameras: list[str] = []
+    image_size: list[int] = []
+    state: str = "pose"
+    action_space: str = "eef-pose"
+    fps: int = 30
+    val_ratio: float = 0.0
+    name: str = "rlbench_demogen"
+
 class PreviewRequest(BaseModel):
     task: str
     variation: int = -1
@@ -67,6 +77,7 @@ MAX_LOG = 4000
 def _job_summary(job: dict) -> dict:
     return {
         "id": job["id"],
+        "kind": job.get("kind", "generate"),
         "status": job["status"],
         "progress": job["progress"],
         "total": job["total"],
@@ -76,40 +87,74 @@ def _job_summary(job: dict) -> dict:
         "error": job.get("error"),
     }
 
-def _run_job(job_id: str, cfg: GenerateConfig):
+def _build_cmd(job):
+    cfg = job["config"]
+    if job.get("kind") == "export":
+        args = [
+            "python3", str(_scripts() / "convert_lerobot.py"),
+            "--src", str(DATA_ROOT),
+            "--out", str(DATA_ROOT / "lerobot"),
+            "--name", cfg["name"],
+            "--state", cfg["state"],
+            "--action-space", cfg["action_space"],
+            "--fps", str(cfg["fps"]),
+            "--val-ratio", str(cfg["val_ratio"]),
+        ]
+        if cfg.get("tasks"):
+            args += ["--tasks", ",".join(cfg["tasks"])]
+        if cfg.get("cameras"):
+            args += ["--cameras", ",".join(cfg["cameras"])]
+        if cfg.get("image_size"):
+            args += ["--image-size", str(cfg["image_size"][0]),
+                     str(cfg["image_size"][1])]
+        return args
+    args = [
+        "python3", str(_scripts() / "generate.py"),
+        "--tasks", ",".join(cfg["tasks"]) if cfg["tasks"] else "all18",
+        "--episodes", str(cfg["episodes"]),
+        "--workers", str(cfg["workers"]),
+        "--seed", str(cfg["seed"]),
+        "--demo-attempts", str(cfg["demo_attempts"]),
+        "--layout", cfg["layout"],
+        "--image-size", str(cfg["image_size"][0]), str(cfg["image_size"][1]),
+        "--output", str(DATA_ROOT),
+    ]
+    if cfg.get("overwrite"):
+        args.append("--overwrite")
+    return args
+
+def _run_job(job_id: str):
     job = jobs[job_id]
     try:
-        args = [
-            "python3", str(_scripts() / "generate.py"),
-            "--tasks", ",".join(cfg.tasks) if cfg.tasks else "all18",
-            "--episodes", str(cfg.episodes),
-            "--workers", str(cfg.workers),
-            "--seed", str(cfg.seed),
-            "--demo-attempts", str(cfg.demo_attempts),
-            "--layout", cfg.layout,
-            "--image-size", str(cfg.image_size[0]), str(cfg.image_size[1]),
-            "--output", str(DATA_ROOT),
-        ]
-        if cfg.overwrite:
-            args.append("--overwrite")
+        args = _build_cmd(job)
         proc = subprocess.Popen(
             args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, start_new_session=True)
         job["proc"] = proc
         saved_re = re.compile(r": saved \(")
+        found_re = re.compile(r"found (\d+) episodes")
+        export_re = re.compile(r"exported (\d+)/(\d+)")
         fail_re = re.compile(r"GIVING UP|FAILED")
         for line in proc.stdout:
             line = line.rstrip()
             job["log"].append(line)
-            if saved_re.search(line):
-                job["progress"] += 1
+            if job.get("kind") == "export":
+                m = found_re.search(line)
+                if m:
+                    job["total"] = int(m.group(1))
+                m = export_re.search(line)
+                if m:
+                    job["progress"] = int(m.group(1))
+            else:
+                if saved_re.search(line):
+                    job["progress"] += 1
             if fail_re.search(line):
                 job["failures"] += 1
         proc.wait()
         if job["status"] == "running":
             job["status"] = "done" if proc.returncode == 0 else "failed"
         if proc.returncode != 0 and job["status"] == "failed":
-            job["error"] = f"generate.py exited with code {proc.returncode}"
+            job["error"] = f"worker exited with code {proc.returncode}"
     except Exception as exc:
         job["status"] = "failed"
         job["error"] = f"{type(exc).__name__}: {exc}"
@@ -129,6 +174,7 @@ def start_generate(cfg: GenerateConfig):
         job_id = uuid.uuid4().hex[:8]
         job = {
             "id": job_id,
+            "kind": "generate",
             "status": "running",
             "progress": 0,
             "failures": 0,
@@ -139,7 +185,40 @@ def start_generate(cfg: GenerateConfig):
             "proc": None,
         }
         jobs[job_id] = job
-    threading.Thread(target=_run_job, args=(job_id, cfg), daemon=True).start()
+    threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
+    return {"job_id": job_id}
+
+@app.post("/api/export")
+def start_export(cfg: ExportConfig):
+    for t in cfg.tasks:
+        if not NAME_RE.match(t):
+            raise HTTPException(400, f"非法任务名: {t}")
+    for c in cfg.cameras:
+        if c not in CAMERAS:
+            raise HTTPException(400, f"未知相机: {c}")
+    if cfg.state not in ("pose", "full"):
+        raise HTTPException(400, "state 须为 pose/full")
+    if cfg.action_space not in ("eef-pose", "eef-delta", "joint"):
+        raise HTTPException(400, "action_space 未知")
+    with jobs_lock:
+        running = [j for j in jobs.values() if j["status"] == "running"]
+        if running:
+            raise HTTPException(409, "已有任务在运行，请等待完成")
+        job_id = uuid.uuid4().hex[:8]
+        job = {
+            "id": job_id,
+            "kind": "export",
+            "status": "running",
+            "progress": 0,
+            "failures": 0,
+            "total": 0,
+            "started": time.time(),
+            "config": cfg.model_dump(),
+            "log": deque(maxlen=MAX_LOG),
+            "proc": None,
+        }
+        jobs[job_id] = job
+    threading.Thread(target=_run_job, args=(job_id,), daemon=True).start()
     return {"job_id": job_id}
 
 @app.get("/api/jobs")
@@ -201,6 +280,7 @@ def stop_job(job_id: str):
             pass
     subprocess.run(["pkill", "-9", "-f", "coppeliaSim"], check=False)
     subprocess.run(["pkill", "-9", "-f", "generate.py"], check=False)
+    subprocess.run(["pkill", "-9", "-f", "convert_lerobot.py"], check=False)
     job["status"] = "stopped"
     job["log"].append("任务已被用户中断")
     return {"ok": True, "status": "stopped"}
