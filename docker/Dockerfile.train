@@ -1,0 +1,9 @@
+FROM rlbench-demogen:latest
+ARG PIP_INDEX_URL=
+RUN pip3 install --no-cache-dir lerobot[dataset,training]==0.7.0
+ENV DEMOGEN_DATA=/data \
+    DEMOGEN_SCRIPTS=/app/scripts \
+    DEMOGEN_CONFIGS=/configs
+WORKDIR /data
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["bash"]

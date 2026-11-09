@@ -14,3 +14,7 @@ configs/
 
 __pycache__/
 *.pyc
+
+train_data/
+outputs/
+rollouts/

@@ -168,6 +168,49 @@ def read_frames(ep_dir, cam, num_steps, size):
     return frames
 
 
+def write_official(episodes, args, cams, size):
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+    features = {
+        f"observation.images.{cam}": {
+            "dtype": "video",
+            "shape": [size[1], size[0], 3],
+            "names": ["height", "width", "channels"],
+        } for cam in cams
+    }
+    features["observation.state"] = {
+        "dtype": "float32",
+        "shape": [STATE_PRESETS[args.state]["dim"]],
+        "names": STATE_PRESETS[args.state]["names"],
+    }
+    features["action"] = {
+        "dtype": "float32",
+        "shape": [ACTION_PRESETS[args.action_space]["dim"]],
+        "names": ACTION_PRESETS[args.action_space]["names"],
+    }
+    ds = LeRobotDataset.create(repo_id=args.name, fps=args.fps,
+                               features=features, root=args.out,
+                               robot_type="panda", use_videos=True)
+    for k, (task, ep, ep_dir, meta, steps) in enumerate(episodes):
+        n = len(steps)
+        states = build_states(steps, args.state)
+        actions = build_actions(steps, args.action_space)
+        instruction = (meta.get("language_instructions") or [task])[0]
+        cam_frames = {cam: read_frames(ep_dir, cam, n, size) for cam in cams}
+        for i in range(n):
+            frame = {
+                "task": instruction,
+                "observation.state": states[i],
+                "action": actions[i],
+            }
+            for cam in cams:
+                frame[f"observation.images.{cam}"] = cam_frames[cam][i]
+            ds.add_frame(frame)
+        ds.save_episode()
+        if (k + 1) % 5 == 0 or k == len(episodes) - 1:
+            log(f"exported {k + 1}/{len(episodes)}")
+    log(f"done: {len(episodes)} episodes -> {args.out} (lerobot official writer)")
+
+
 def main():
     ap = argparse.ArgumentParser(description="RLBench DemoGen -> LeRobot v2.1 exporter")
     ap.add_argument("--src", default="/data", help="native dataset root")
@@ -184,6 +227,8 @@ def main():
     ap.add_argument("--fps", type=int, default=30, help="nominal fps")
     ap.add_argument("--val-ratio", type=float, default=0.0,
                     help="fraction of episodes for test split")
+    ap.add_argument("--writer", choices=["native", "official"], default="native",
+                    help="native: built-in v2.1; official: lerobot API (needs lerobot)")
     args = ap.parse_args()
 
     cams = [c.strip() for c in args.cameras.split(",") if c.strip()]
@@ -202,6 +247,11 @@ def main():
     if not episodes:
         sys.exit("no episodes found")
     log(f"found {len(episodes)} episodes")
+
+    size = args.image_size or list(episodes[0][3].get("image_size", [128, 128]))
+    if args.writer == "official":
+        write_official(episodes, args, cams, size)
+        return
 
     out = Path(args.out)
     import shutil

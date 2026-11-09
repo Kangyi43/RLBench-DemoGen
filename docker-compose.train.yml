@@ -1,0 +1,13 @@
+services:
+  demogen-train:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.train
+    image: rlbench-demogen-train:latest
+    shm_size: "4gb"
+    volumes:
+      - ./output:/data
+      - ./configs:/configs
+    environment:
+      - LIBGL_ALWAYS_SOFTWARE=1
+    command: ["bash"]

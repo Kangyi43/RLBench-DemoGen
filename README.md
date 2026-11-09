@@ -20,6 +20,27 @@
 - 教学演示与实验课：镜像分发，学生零安装
 - CI / 自动化流水线（全无头、可脚本化）
 
+## 对比同类工具
+
+| | RLBench DemoGen | Isaac Lab | ManiSkill3 | robosuite |
+|---|---|---|---|---|
+| 安装 | Docker 一条命令 | Omniverse 全家桶 | pip + 多项配置 | pip |
+| GPU | 不需要 | 需要 | 推荐 | 不需要 |
+| 可视化配置 / 真渲染预览 | ✅ | GUI 场景编辑 | ✗ | ✗ |
+| 演示数据生成 | ✅ 脚本专家 | ✗（需自写） | ✗（需自写） | ✗（需自写） |
+| LeRobot 格式导出 | ✅ 一键 | ✗ | ✗ | ✗ |
+| 上手时间 | ~10 分钟 | 数小时 | 数小时 | 数小时 |
+
+## English
+
+**RLBench DemoGen** — a visual dataset factory for robot manipulation learning:
+pick tasks in the browser, preview with real simulator rendering, generate
+multi-view RGB-D demonstrations with language annotations, and export them to
+**LeRobot** format ready for ACT / Diffusion Policy training. One-command Docker
+setup, no GPU required for data generation.
+[Quick start](#快速开始web-可视化) · [LeRobot export](docs/lerobot-export.md) ·
+[Train tutorial](docs/train-act.md)
+
 ## 使用环境
 
 | 操作系统 | Docker | 磁盘 | 内存 | 浏览器 | GPU / 显示器 | 网络 |
