@@ -4,6 +4,10 @@
 
 ![UI](docs/ui.png)
 
+训练闭环实拍：生成数据 → LeRobot 导出 → 微调 ACT → 仿真回放（60% 成功率，[训练教程](docs/train-act.md)）：
+
+![trained policy rollout](docs/rollout-demo.gif)
+
 ## 特点
 
 - **可视化操作**：任务点选 / 参数滑杆 / 仿真器真渲染预览 / 进度与日志实时展示 / 任务一键中断

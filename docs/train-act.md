@@ -33,30 +33,31 @@ conda run -n demogen-train pip install --no-build-isolation "$HOME/Project/Embod
 
 ⚠️ 这些 export 只在当前终端生效（⛔ 勿写入 `~/.bashrc`，Qt 冲突风险）。
 
-## Step 1 · 生成演示数据（约 20 分钟，15 集）
+## Step 1 · 生成演示数据（约 90 分钟，100 集）
 
 ```bash
-docker compose run --rm demogen generate --tasks reach_and_drag --episodes 15 --workers 2
+docker compose run --rm demogen generate --tasks push_buttons --episodes 100 --workers 1
 ```
 
 ## Step 2 · 导出 LeRobot 训练集（官方写入器）
 
 ```bash
 conda run -n demogen-train python scripts/convert_lerobot.py \
-  --src output --out train_data/lerobot --name reach_and_drag_act \
-  --tasks reach_and_drag --cameras front --image-size 224 224 \
+  --src output --out train_data/lerobot --name push_buttons_act \
+  --tasks push_buttons --cameras front --image-size 224 224 \
   --state pose --action-space eef-pose --writer official
 ```
 
 `--writer official` 用 lerobot 自家 API 写盘，与安装的 lerobot 版本格式永远一致。
 
-## Step 3 · 训练 ACT（RTX 4060 约 15 分钟 / 2000 步）
+## Step 3 · 训练 ACT（RTX 4060 约 10 分钟 / 6000 步）
 
 ```bash
 conda run -n demogen-train lerobot-train \
-  --policy.type=act --policy.repo_id=local/reach_act \
-  --dataset.repo_id=reach_and_drag_act --dataset.root=train_data/lerobot \
-  --steps=2000 --batch_size=8 --save_freq=1000 --output_dir=outputs/train_act
+  --policy.type=act --policy.repo_id=local/push_act \
+  --dataset.repo_id=push_buttons_act --dataset.root=train_data/lerobot \
+  --steps=6000 --batch_size=8 --save_freq=2000 --output_dir=outputs/train_act \
+  --save_checkpoint_to_hub=false --trackio.enable=false --policy.push_to_hub=false
 ```
 
 检查点在 `outputs/train_act/checkpoints/`（`last/pretrained_model` 为最终策略）。
@@ -66,9 +67,9 @@ conda run -n demogen-train lerobot-train \
 
 ```bash
 conda run -n demogen-train xvfb-run -a python3 scripts/rollout_eval.py \
-  --ckpt outputs/train_act --task reach_and_drag --episodes 5 \
+  --ckpt outputs/train_act/checkpoints/006000/pretrained_model --task push_buttons --episodes 10 \
   --action-space eef-pose --state pose --cameras front --image-size 224 224 \
-  --max-steps 180 --gif-dir rollouts --report rollouts/report.json
+  --max-steps 200 --gif-dir rollouts --report rollouts/report.json
 ```
 
 产出：`rollouts/<task>_success_*.gif` / `_fail_*.gif` 与 `report.json`
@@ -78,24 +79,32 @@ conda run -n demogen-train xvfb-run -a python3 scripts/rollout_eval.py \
 
 ## 实测参考结果与调参经验
 
-本机（RTX 4060）实测：15 集 reach_and_drag 训练 2000 步约 15 分钟，回放可跑出
-完整长轨迹（约 150–200 步/集）。经验要点：
+本机（RTX 4060）实测两条任务线，配方均为上文步骤：
 
-- **短训练/早期检查点往往更稳**：小数据集上长训练（>6000 步）容易过拟合到
-  平均动作，回放反而变差；先用 2000–4000 步验证，再逐步加；
+| 任务 | 数据 | 训练 | 回放成功率（10 集） | 备注 |
+|---|---|---|---|---|
+| `push_buttons` | 100 集 | 6000 步 | **60%**（成功集 51–67 步） | 本文配方，推荐首选 |
+| `reach_and_drag` | 200 集 | 10000 步 ×5 检查点 | 0% | 见下方"任务形态"经验 |
+
+经验要点：
+
+- **任务形态是第一位的**：无抓取的点按/推移类任务（`push_buttons`、`slide_block`）
+  ACT 小数据即可出成功率；抓取-放置类任务（`reach_and_drag`）对目标位姿 ×
+  摆放碰撞极敏感，小规模数据 + ACT 配方上限明显，换更大模型（Diffusion Policy）
+  或 ≥500 集再战；
+- **短训练/早期检查点往往更稳**：小数据上长训练会退化——200 集 reach_and_drag
+  实测 2000 步检查点行为连贯、8000 步起完全退化（起步即卡）；每 2000 步存档，
+  用 `rollout_eval.py` 逐检查点快筛（各 5 集）再选最优正式评估；
 - **回放鲁棒性**（已内置）：目标收缩重试（1.0/0.7/0.45）+ 起始卡住时换摆
   放重种（每集最多 3 次）——弱策略与场景随机性叠加时的标配缓冲；
-- **成功率提升三要素**：数据量（建议 ≥50 集）> 训练步数 > 模型；15 集 2000
-  步是"管线演示"下限而非质量下限；
-- 显存不足把 `--batch_size` 降为 4；训练结束报 Hub 推送超时不影响检查点
-  （加 `--save_checkpoint_to_hub=false` 可静音）。
-
-最终成功率与 GIF 见 `rollouts/report_final.json` 与 `rollouts/`。
+- 显存不足把 `--batch_size` 降为 4；`--policy.push_to_hub=false` 等开关
+  可避免训练收尾时的联网推送超时。
 
 ## 换任务 / 换策略
 
-- 换任务：Step 1 的 `--tasks` 换成目标任务（建议先用 `close_jar`、`push_buttons`
-  这类高成功率任务试水），后续命令的 `--task`/`--name` 同步替换；
+- 换任务：Step 1 的 `--tasks` 换成目标任务，后续命令的 `--task`/`--name` 同步
+  替换；难度预期见上文"任务形态"经验（点按/推移类易出成功率，抓取类需大
+  数据或更强模型）；
 - 换 Diffusion Policy：Step 3 的 `--policy.type=act` 换 `--policy.type=diffusion`，
   训练更慢但通常更稳；
 - 换动作空间：`joint`（关节角，回放用 JointPosition）或 `eef-delta` 与导出参数保持一致即可。
